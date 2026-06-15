@@ -1,0 +1,6 @@
+{
+  "name": "Gold Payments",
+  "description": "Una aplicación de banca móvil premium, segura y rápida, con transferencias instantáneas, saldos en tiempo real e historial detallado, construida con Jetpack Compose y Room.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
