@@ -16,6 +16,13 @@ sealed class AuthState {
     data class Error(val message: String) : AuthState()
 }
 
+sealed class QuickTransferStatus {
+    object Idle : QuickTransferStatus()
+    object Loading : QuickTransferStatus()
+    data class Success(val message: String) : QuickTransferStatus()
+    data class Error(val errorMsg: String) : QuickTransferStatus()
+}
+
 class BankingViewModel(private val repository: BankingRepository) : ViewModel() {
 
     // Auth states
@@ -62,6 +69,15 @@ class BankingViewModel(private val repository: BankingRepository) : ViewModel() 
     val loginPassword = MutableStateFlow("")
     private val _loginError = MutableStateFlow<String?>(null)
     val loginError: StateFlow<String?> = _loginError.asStateFlow()
+
+    // Register
+    val registerUsername = MutableStateFlow("")
+    val registerPassword = MutableStateFlow("")
+    val registerFullName = MutableStateFlow("")
+    private val _registerError = MutableStateFlow<String?>(null)
+    val registerError: StateFlow<String?> = _registerError.asStateFlow()
+    private val _registerSuccess = MutableStateFlow<String?>(null)
+    val registerSuccess: StateFlow<String?> = _registerSuccess.asStateFlow()
 
     // Transfer
     val transferDestination = MutableStateFlow("")
@@ -137,6 +153,73 @@ class BankingViewModel(private val repository: BankingRepository) : ViewModel() 
         clearTransferForm()
     }
 
+    fun registerUser() {
+        _registerError.value = null
+        _registerSuccess.value = null
+        val username = registerUsername.value.trim().lowercase()
+        val password = registerPassword.value
+        val fullName = registerFullName.value.trim()
+
+        if (username.isBlank() || password.isBlank() || fullName.isBlank()) {
+            _registerError.value = "Por favor ingrese todos los campos."
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                val existing = repository.getAccount(username)
+                if (existing != null) {
+                    _registerError.value = "El nombre de usuario '$username' ya se encuentra registrado."
+                    return@launch
+                }
+
+                // STP (Sistema de Transferencias y Pagos) CLABE format in Mexico:
+                // 3 digits bank (646) + 3 digits city (180) + 11 digits account/phone + 1 checksum digit = 18 digits.
+                val builder = java.lang.StringBuilder("646180")
+                repeat(12) {
+                    builder.append((0..9).random())
+                }
+                val generatedCLABE = builder.toString()
+
+                val bonusAmount = 100000.00
+                val newAccount = AccountEntity(
+                    username = username,
+                    passwordHash = password,
+                    fullName = fullName,
+                    accountNumber = generatedCLABE,
+                    balance = bonusAmount
+                )
+
+                // Save to Room database
+                repository.createAccount(newAccount)
+
+                // Log the welcome registration bonus as an initial transaction deposit!
+                val bonusTx = TransactionEntity(
+                    username = username,
+                    type = "Depósito",
+                    destinationAccount = generatedCLABE,
+                    amount = bonusAmount,
+                    description = "Bono de Inscripción Gold Premium STP"
+                )
+                repository.insertTransaction(bonusTx)
+
+                _registerSuccess.value = "¡Registro Exitoso! Se te ha asignado tu Cuenta STP Clabe: $generatedCLABE con un Bono de Bienvenida de $100,000.00 USD."
+                
+                // Clear status flows
+                registerUsername.value = ""
+                registerPassword.value = ""
+                registerFullName.value = ""
+            } catch (e: Exception) {
+                _registerError.value = "Ocurrió un error inesperado al registrar el usuario: ${e.message}"
+            }
+        }
+    }
+
+    fun clearRegisterErrorAndSuccess() {
+        _registerError.value = null
+        _registerSuccess.value = null
+    }
+
     fun performTransfer() {
         val sender = _currentUser.value ?: return
         val destination = transferDestination.value.trim()
@@ -190,6 +273,39 @@ class BankingViewModel(private val repository: BankingRepository) : ViewModel() 
     fun clearNotifications() {
         _transferSuccessMessage.value = null
         _transferErrorMessage.value = null
+    }
+
+    // State for Quick Transfer Bottom Sheet
+    private val _quickTransferStatus = MutableStateFlow<QuickTransferStatus>(QuickTransferStatus.Idle)
+    val quickTransferStatus: StateFlow<QuickTransferStatus> = _quickTransferStatus.asStateFlow()
+
+    fun performQuickTransfer(destination: String, amount: Double, recipientName: String) {
+        val sender = _currentUser.value ?: return
+        if (amount <= 0) {
+            _quickTransferStatus.value = QuickTransferStatus.Error("El monto debe ser mayor que cero.")
+            return
+        }
+        _quickTransferStatus.value = QuickTransferStatus.Loading
+        viewModelScope.launch {
+            val result = repository.executeTransfer(
+                senderUsername = sender,
+                destinationAccountNumber = destination,
+                amount = amount,
+                description = "Traspaso rápido a $recipientName"
+            )
+            when (result) {
+                is TransferResult.Success -> {
+                    _quickTransferStatus.value = QuickTransferStatus.Success(result.message)
+                }
+                is TransferResult.Error -> {
+                    _quickTransferStatus.value = QuickTransferStatus.Error(result.errorMsg)
+                }
+            }
+        }
+    }
+
+    fun resetQuickTransferStatus() {
+        _quickTransferStatus.value = QuickTransferStatus.Idle
     }
 }
 

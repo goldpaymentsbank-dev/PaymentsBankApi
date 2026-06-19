@@ -20,7 +20,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Payments
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -54,6 +56,8 @@ fun TransferScreen(
     val isLoading by viewModel.transferLoading.collectAsState()
     val successMsg by viewModel.transferSuccessMessage.collectAsState()
     val errorMsg by viewModel.transferErrorMessage.collectAsState()
+
+    var showConfirmationDialog by remember { mutableStateOf(false) }
 
     val focusManager = LocalFocusManager.current
     val scrollState = rememberScrollState()
@@ -204,6 +208,50 @@ fun TransferScreen(
                     )
                 )
 
+                // Dynamic STP Recognition
+                val isMexicanSTP = remember(destination) {
+                    destination.trim().let { it.length == 18 || it.startsWith("646") || it.contains("STP", ignoreCase = true) }
+                }
+                AnimatedVisibility(
+                    visible = isMexicanSTP,
+                    enter = fadeIn(),
+                    exit = fadeOut()
+                ) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.12f)
+                        ),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "🇲🇽",
+                                fontSize = 16.sp,
+                                modifier = Modifier.padding(end = 8.dp)
+                            )
+                            Column {
+                                Text(
+                                    text = "Cuenta Mexicana STP Detectada",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = "Traspaso interbancario SPEI de inmediato autorizado.",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+
                 // Outlined Amount Field
                 OutlinedTextField(
                     value = amount,
@@ -247,7 +295,13 @@ fun TransferScreen(
                     keyboardActions = KeyboardActions(
                         onDone = {
                             focusManager.clearFocus()
-                            viewModel.performTransfer()
+                            val amountVal = amount.toDoubleOrNull()
+                            if (destination.isBlank() || amountVal == null || amountVal <= 0) {
+                                viewModel.performTransfer()
+                            } else {
+                                viewModel.clearNotifications()
+                                showConfirmationDialog = true
+                            }
                         }
                     ),
                     shape = RoundedCornerShape(14.dp),
@@ -265,7 +319,13 @@ fun TransferScreen(
                 Button(
                     onClick = {
                         focusManager.clearFocus()
-                        viewModel.performTransfer()
+                        val amountVal = amount.toDoubleOrNull()
+                        if (destination.isBlank() || amountVal == null || amountVal <= 0) {
+                            viewModel.performTransfer()
+                        } else {
+                            viewModel.clearNotifications()
+                            showConfirmationDialog = true
+                        }
                     },
                     enabled = !isLoading,
                     modifier = Modifier
@@ -303,6 +363,163 @@ fun TransferScreen(
                 }
 
                 Spacer(modifier = Modifier.height(40.dp))
+            }
+
+            // Security Confirmation Dialog
+            if (showConfirmationDialog) {
+                AlertDialog(
+                    onDismissRequest = { showConfirmationDialog = false },
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Default.Security,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(36.dp)
+                        )
+                    },
+                    title = {
+                        Text(
+                            text = "Confirmar Transacción",
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textAlign = TextAlign.Center
+                        )
+                    },
+                    text = {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text(
+                                text = "Por favor, revise con cuidado los datos de la transferencia antes de continuar.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+
+                            // Details Card
+                            Card(
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = "Destinatario:",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            text = destination,
+                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = "Monto:",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            text = "$${String.format("%,.2f", amount.toDoubleOrNull() ?: 0.0)} USD",
+                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = "Concepto:",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            text = if (description.isBlank()) "(Sin concepto)" else description,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Warning Note
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.1f),
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                                    .border(
+                                        width = 0.5.dp,
+                                        color = MaterialTheme.colorScheme.error.copy(alpha = 0.2f),
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                                    .padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Warning,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Las transferencias de Gold Premium son inmediatas e irreversibles.",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                showConfirmationDialog = false
+                                viewModel.performTransfer()
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            ),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("Confirmar y Enviar", fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = { showConfirmationDialog = false }
+                        ) {
+                            Text("Modificar datos", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    },
+                    shape = RoundedCornerShape(20.dp),
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
             }
 
             // Success Receipt Dialog / Full Overlay (Extremely professional details!)

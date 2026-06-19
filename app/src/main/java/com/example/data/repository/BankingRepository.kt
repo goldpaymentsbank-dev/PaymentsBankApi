@@ -23,6 +23,10 @@ class BankingRepository(
         accountDao.insertAccount(account)
     }
 
+    suspend fun insertTransaction(transaction: TransactionEntity) {
+        transactionDao.insertTransaction(transaction)
+    }
+
     suspend fun preseedDatabaseIfEmpty() {
         // Pre-seed user "admin" / "1234" if not present
         val existingAdmin = accountDao.getAccount("admin")
